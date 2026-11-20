@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>圖片轉 3D 體素藝術 | Image to Voxel Art</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@19.0.0",
+        "react-dom/client": "https://esm.sh/react-dom@19.0.0/client"
+      }
+    }
+  </script>
+</head>
+<body class="bg-white text-black antialiased">
+  <div id="root"></div>
+
+  <!-- 內嵌範例 1：櫻花浮空島 -->
+  <script type="text/plain" id="example-html-1">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floating Voxel Sakura Island</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #ffebd0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    <\/script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
+
+        const VOXEL_SIZE = 1;
+        const ISLAND_RADIUS = 18;
+        const TREE_HEIGHT = 16;
+        
+        const PALETTE = {
+            GRASS_TOP: 0x6a8d46, DIRT: 0x5c4033, STONE_LIGHT: 0x7a7a7a,
+            STONE_DARK: 0x555555, TRUNK: 0x3e2723, LEAVES_1: 0xffb7c5,
+            LEAVES_2: 0xffc0cb, LEAVES_3: 0xff69b4, WATER: 0xaaddff
+        };
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffeedd);
+        scene.fog = new THREE.FogExp2(0xffeedd, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(48, 24, 48);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.SoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        const ambientLight = new THREE.AmbientLight(0xffcccc, 0.6);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfffaed, 1.5);
+        sunLight.position.set(50, 80, 30);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 200;
+        sunLight.shadow.camera.left = -50;
+        sunLight.shadow.camera.right = 50;
+        sunLight.shadow.camera.top = 50;
+        sunLight.shadow.camera.bottom = -50;
+        scene.add(sunLight);
+
+        const backLight = new THREE.DirectionalLight(0xaaccff, 0.4);
+        backLight.position.set(-30, 20, -30);
+        scene.add(backLight);
+
+        const voxels = [];
+        function addVoxel(x, y, z, color) { voxels.push({ x, y, z, color }); }
+        const dist = (x1, z1, x2, z2) => Math.sqrt((x2-x1)**2 + (z2-z1)**2);
+
+        const simplex = new SimplexNoise();
+        for (let x = -ISLAND_RADIUS; x <= ISLAND_RADIUS; x++) {
+            for (let z = -ISLAND_RADIUS; z <= ISLAND_RADIUS; z++) {
+                const d = dist(0, 0, x, z);
+                if (d < ISLAND_RADIUS - 1) {
+                    const surfaceHeight = Math.floor(simplex.noise(x * 0.1, z * 0.1) * 2);
+                    let depth = Math.floor((ISLAND_RADIUS - d) * 1.2);
+                    depth += Math.floor(simplex.noise(x * 0.2, z * 0.2) * 4);
+                    let isRiver = false;
+                    if (x > 2 && x < 6 && z > 0) {
+                        depth -= 1;
+                        isRiver = true;
+                    }
+                    for (let y = surfaceHeight; y >= surfaceHeight - depth; y--) {
+                        let color;
+                        if (isRiver && y === surfaceHeight) continue;
+                        else if (isRiver && y === surfaceHeight - 1) color = PALETTE.STONE_DARK;
+                        else if (y === surfaceHeight) {
+                            color = (Math.random() > 0.8) ? PALETTE.GRASS_TOP : 0x7a9e55;
+                            if(Math.random() > 0.98) addVoxel(x, y+1, z, PALETTE.STONE_LIGHT);
+                        } else if (y > surfaceHeight - 3) color = PALETTE.DIRT;
+                        else color = (Math.random() > 0.5) ? PALETTE.STONE_LIGHT : PALETTE.STONE_DARK;
+
+                        if (!(x > 2 && x < 6 && z > ISLAND_RADIUS - 3)) {
+                            addVoxel(x, y, z, color);
+                        }
+                    }
+                }
+            }
+        }
+
+        const trunkX = -4, trunkZ = -2;
+        for (let y = 0; y < TREE_HEIGHT; y++) {
+            let offX = Math.sin(y * 0.3) * 2;
+            let offZ = Math.cos(y * 0.2) * 2;
+            let thickness = (y < 4) ? 2 : 1;
+            for(let tx = -thickness; tx <= thickness; tx++) {
+                for(let tz = -thickness; tz <= thickness; tz++) {
+                    if(tx*tx + tz*tz <= thickness*thickness + 0.5) {
+                        addVoxel(trunkX + offX + tx, y + 1, trunkZ + offZ + tz, PALETTE.TRUNK);
+                    }
+                }
+            }
+            if (y > 6 && y % 3 === 0) {
+                let branchLen = 4 + Math.random() * 4;
+                let dirX = (Math.random() - 0.5);
+                let dirZ = (Math.random() - 0.5);
+                for(let b=1; b<branchLen; b++) {
+                    addVoxel(trunkX + offX + dirX*b*2, y + 1 + b, trunkZ + offZ + dirZ*b*2, PALETTE.TRUNK);
+                }
+            }
+        }
+
+        const canopyCenters = [
+            {x: trunkX, y: TREE_HEIGHT + 2, z: trunkZ, r: 8},
+            {x: trunkX + 5, y: TREE_HEIGHT - 2, z: trunkZ + 2, r: 6},
+            {x: trunkX - 5, y: TREE_HEIGHT - 1, z: trunkZ - 2, r: 6},
+            {x: trunkX, y: TREE_HEIGHT + 4, z: trunkZ - 4, r: 5},
+            {x: trunkX + 2, y: TREE_HEIGHT, z: trunkZ + 5, r: 6},
+        ];
+        canopyCenters.forEach(sphere => {
+            for (let x = -sphere.r; x <= sphere.r; x++) {
+                for (let y = -sphere.r; y <= sphere.r; y++) {
+                    for (let z = -sphere.r; z <= sphere.r; z++) {
+                        if (x*x + y*y + z*z <= sphere.r*sphere.r && Math.random() > 0.4) {
+                            const rand = Math.random();
+                            let col = PALETTE.LEAVES_1;
+                            if (rand < 0.33) col = PALETTE.LEAVES_2;
+                            else if (rand < 0.66) col = PALETTE.LEAVES_3;
+                            addVoxel(sphere.x + x, sphere.y + y, sphere.z + z, col);
+                        }
+                    }
+                }
+            }
+        });
+
+        const floatingRocks = [
+            {x: 15, y: -5, z: 10, s: 2},
+            {x: -18, y: -2, z: 5, s: 1.5},
+            {x: 5, y: -15, z: -10, s: 3},
+        ];
+        floatingRocks.forEach(rock => {
+            for(let x=-rock.s; x<=rock.s; x++) {
+                for(let y=-rock.s; y<=rock.s; y++) {
+                    for(let z=-rock.s; z<=rock.s; z++) {
+                        if (x*x + y*y + z*z <= rock.s*rock.s + Math.random()) {
+                            addVoxel(rock.x+x, rock.y+y, rock.z+z, PALETTE.STONE_DARK);
+                        }
+                    }
+                }
+            }
+        });
+
+        const geometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
+        const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.1 });
+        const instancedMesh = new THREE.InstancedMesh(geometry, material, voxels.length);
+        instancedMesh.castShadow = true;
+        instancedMesh.receiveShadow = true;
+        const dummy = new THREE.Object3D();
+        const color = new THREE.Color();
+        voxels.forEach((voxel, i) => {
+            dummy.position.set(voxel.x, voxel.y, voxel.z);
+            dummy.updateMatrix();
+            instancedMesh.setMatrixAt(i, dummy.matrix);
+            instancedMesh.setColorAt(i, color.setHex(voxel.color));
+        });
+        scene.add(instancedMesh);
+
+        const waterCount = 150;
+        const waterGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+        const waterMat = new THREE.MeshStandardMaterial({ color: PALETTE.WATER, transparent: true, opacity: 0.8, roughness: 0.1 });
+        const waterfallMesh = new THREE.InstancedMesh(waterGeo, waterMat, waterCount);
+        scene.add(waterfallMesh);
+        const waterParticles = [];
+        for(let i=0; i<waterCount; i++) {
+            waterParticles.push({
+                x: 3 + Math.random() * 3, y: Math.random(), z: 10 + Math.random() * 5,
+                speed: 0.1 + Math.random() * 0.2, offset: Math.random() * 100, state: 'river'
+            });
+        }
+
+        const petalCount = 200;
+        const petalGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+        const petalMat = new THREE.MeshBasicMaterial({ color: PALETTE.LEAVES_1 });
+        const petalMesh = new THREE.InstancedMesh(petalGeo, petalMat, petalCount);
+        scene.add(petalMesh);
+        const petals = [];
+        for(let i=0; i<petalCount; i++) {
+            petals.push({
+                x: (Math.random() - 0.5) * 40, y: 10 + Math.random() * 20, z: (Math.random() - 0.5) * 40,
+                speedY: 0.05 + Math.random() * 0.05, speedX: (Math.random() - 0.5) * 0.05,
+                speedZ: (Math.random() - 0.5) * 0.05, rotSpeed: (Math.random() - 0.5) * 0.1
+            });
+        }
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            controls.update();
+            instancedMesh.position.y = Math.sin(time * 0.5) * 0.5;
+            waterfallMesh.position.y = instancedMesh.position.y;
+            waterParticles.forEach((p, i) => {
+                if (p.state === 'river') {
+                    p.z += p.speed;
+                    p.y = Math.sin(time * 5 + p.offset) * 0.1;
+                    if (p.z > 13) p.state = 'falling';
+                } else if (p.state === 'falling') {
+                    p.y -= 0.4;
+                    p.z += 0.05;
+                    if (p.y < -25) {
+                        p.state = 'river'; p.z = 0; p.x = 3 + Math.random() * 3; p.y = 0;
+                    }
+                }
+                dummy.position.set(p.x, p.y, p.z);
+                dummy.scale.setScalar(1);
+                if (p.state === 'falling') dummy.scale.y = 2;
+                dummy.updateMatrix();
+                waterfallMesh.setMatrixAt(i, dummy.matrix);
+            });
+            waterfallMesh.instanceMatrix.needsUpdate = true;
+
+            petals.forEach((p, i) => {
+                p.y -= p.speedY;
+                p.x += p.speedX + Math.sin(time + p.y)*0.02;
+                p.z += p.speedZ + Math.cos(time + p.y)*0.02;
+                if (p.y < -30) {
+                    p.y = 25; p.x = (Math.random() - 0.5) * 30; p.z = (Math.random() - 0.5) * 30;
+                }
+                dummy.position.set(p.x, p.y, p.z);
+                dummy.rotation.set(time * p.rotSpeed, time * p.rotSpeed, time * p.rotSpeed);
+                dummy.scale.setScalar(1);
+                dummy.updateMatrix();
+                petalMesh.setMatrixAt(i, dummy.matrix);
+            });
+            petalMesh.instanceMatrix.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    <\/script>
+</body>
+</html>
+  </script>
+
+  <!-- 內嵌範例 2：噴射背包貓咪 -->
+  <script type="text/plain" id="example-html-2">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Jetpack Cat</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        canvas { display: block; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    <\/script>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const COLORS = {
+            orange: 0xE69F46, orangeDark: 0xBF7E30, white: 0xF0F0F0,
+            pink: 0xFFA0A0, black: 0x111111, eyeGreen: 0x8FBC8F,
+            red: 0xD13434, silver: 0xAAAAAA, thruster: 0x55CCFF
+        };
+        const VOXEL_SIZE = 5;
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x6EB1FF);
+        scene.fog = new THREE.Fog(0x6EB1FF, 200, 900);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+        camera.position.set(80, 40, 120);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 1.0;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        const boxGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
+        const materials = {};
+        function getMaterial(colorHex) {
+            if (!materials[colorHex]) {
+                materials[colorHex] = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.8 });
+            }
+            return materials[colorHex];
+        }
+        function createVoxel(x, y, z, colorHex, parent) {
+            const mesh = new THREE.Mesh(boxGeometry, getMaterial(colorHex));
+            mesh.position.set(x * VOXEL_SIZE, y * VOXEL_SIZE, z * VOXEL_SIZE);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            parent.add(mesh);
+            return mesh;
+        }
+
+        const catGroup = new THREE.Group();
+        scene.add(catGroup);
+
+        for (let y = -2; y <= 3; y++) {
+            for (let x = -2; x <= 2; x++) {
+                for (let z = -1; z <= 1; z++) {
+                    let color = COLORS.orange;
+                    if (z > 0 && x > -2 && x < 2 && y < 2) color = COLORS.white;
+                    if (z === 1 && (x === -1 || x === 1)) color = COLORS.silver;
+                    if (z === 1.2 && y === 0) color = COLORS.silver;
+                    createVoxel(x, y, z, color, catGroup);
+                }
+            }
+        }
+
+        const headGroup = new THREE.Group();
+        headGroup.position.set(0, 4 * VOXEL_SIZE, 0);
+        catGroup.add(headGroup);
+
+        for (let y = 0; y < 5; y++) {
+            for (let x = -3; x <= 3; x++) {
+                for (let z = -2; z <= 2; z++) {
+                    let color = COLORS.orange;
+                    if (y === 4 && x % 2 === 0) color = COLORS.orangeDark;
+                    if (z === 2 && y < 2 && x > -2 && x < 2) color = COLORS.white;
+                    if ((x === -3 || x === 3) && (z === -2 || z === 2)) continue;
+                    createVoxel(x, y, z, color, headGroup);
+                }
+            }
+        }
+
+        createVoxel(0, 1.5, 3, COLORS.pink, headGroup);
+        createVoxel(-1.5, 2.5, 2.1, COLORS.eyeGreen, headGroup);
+        createVoxel(1.5, 2.5, 2.1, COLORS.eyeGreen, headGroup);
+        createVoxel(-1.5, 2.5, 2.4, COLORS.black, headGroup);
+        createVoxel(1.5, 2.5, 2.4, COLORS.black, headGroup);
+
+        createVoxel(-3.2, 1, 1, COLORS.white, headGroup).scale.set(0.5, 0.2, 0.2);
+        createVoxel(-3.5, 0.5, 1, COLORS.white, headGroup).scale.set(0.5, 0.2, 0.2);
+        createVoxel(3.2, 1, 1, COLORS.white, headGroup).scale.set(0.5, 0.2, 0.2);
+        createVoxel(3.5, 0.5, 1, COLORS.white, headGroup).scale.set(0.5, 0.2, 0.2);
+
+        function buildEar(sign) {
+            createVoxel(sign * 2, 5, 0, COLORS.orange, headGroup);
+            createVoxel(sign * 2, 6, 0, COLORS.orange, headGroup);
+            createVoxel(sign * 1, 5, 0, COLORS.orange, headGroup);
+            createVoxel(sign * 2, 5, 1, COLORS.pink, headGroup);
+        }
+        buildEar(1); buildEar(-1);
+
+        const lArm = new THREE.Group();
+        lArm.position.set(-2.5 * VOXEL_SIZE, 2 * VOXEL_SIZE, 0.5 * VOXEL_SIZE);
+        catGroup.add(lArm);
+        createVoxel(0, 0, 0, COLORS.orange, lArm);
+        createVoxel(0, -1, 0, COLORS.orange, lArm);
+        createVoxel(0, -2, 0, COLORS.white, lArm);
+
+        const rArm = new THREE.Group();
+        rArm.position.set(2.5 * VOXEL_SIZE, 2 * VOXEL_SIZE, 0.5 * VOXEL_SIZE);
+        catGroup.add(rArm);
+        rArm.rotation.z = -Math.PI / 4;
+        rArm.rotation.x = -Math.PI / 4;
+        createVoxel(0, 0, 0, COLORS.orange, rArm);
+        createVoxel(1, 0, 0, COLORS.orange, rArm);
+        createVoxel(2, 0, 0, COLORS.white, rArm);
+        createVoxel(2.1, 0.1, 0.1, COLORS.black, rArm).scale.set(0.2, 0.5, 0.5);
+
+        function buildLeg(x) {
+            const leg = new THREE.Group();
+            leg.position.set(x * VOXEL_SIZE, -2.5 * VOXEL_SIZE, 0);
+            leg.rotation.x = Math.PI / 6;
+            catGroup.add(leg);
+            createVoxel(0, 0, 0, COLORS.orange, leg);
+            createVoxel(0, -1, 0, COLORS.orange, leg);
+            createVoxel(0, -2, 0, COLORS.white, leg);
+        }
+        buildLeg(-1.5); buildLeg(1.5);
+
+        const tail = new THREE.Group();
+        tail.position.set(0, -2 * VOXEL_SIZE, -1.5 * VOXEL_SIZE);
+        catGroup.add(tail);
+        for(let i=0; i<5; i++) {
+            createVoxel(0, -i, -i*0.5, (i%2===0 ? COLORS.orange : COLORS.orangeDark), tail);
+        }
+
+        const jetpack = new THREE.Group();
+        jetpack.position.set(0, 0, -2 * VOXEL_SIZE);
+        catGroup.add(jetpack);
+        function buildTank(x) {
+            for(let y=-2; y<3; y++) {
+                createVoxel(x, y, 0, COLORS.red, jetpack);
+                createVoxel(x, y, -1, COLORS.red, jetpack);
+                if(y !== -2 && y !== 2) createVoxel(x - Math.sign(x), y, 0, COLORS.red, jetpack);
+            }
+            createVoxel(x, 3, 0, COLORS.silver, jetpack);
+            createVoxel(x, -3, 0, COLORS.silver, jetpack);
+        }
+        buildTank(-2.5); buildTank(2.5);
+
+        for(let x=-1; x<=1; x++) {
+            for(let y=-1; y<=2; y++) createVoxel(x, y, 0.5, COLORS.white, jetpack);
+        }
+        createVoxel(0, 1.5, 0.6, COLORS.red, jetpack).scale.set(0.5,0.5,0.2);
+
+        const particleGeometry = new THREE.BoxGeometry(VOXEL_SIZE*0.8, VOXEL_SIZE*0.8, VOXEL_SIZE*0.8);
+        const particleMaterial = new THREE.MeshBasicMaterial({ color: COLORS.thruster, transparent: true, opacity: 0.8 });
+        const particles = [];
+        function createParticle(xOffset) {
+            const p = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+            p.position.x = xOffset * VOXEL_SIZE + (Math.random() - 0.5) * 5;
+            p.position.y = -3 * VOXEL_SIZE + catGroup.position.y - 5;
+            p.position.z = -2 * VOXEL_SIZE + (Math.random() - 0.5) * 5;
+            scene.add(p);
+            particles.push({ mesh: p, life: 1.0, speed: 2.0 + Math.random() });
+        }
+
+        function createCloud(x, y, z, scale) {
+            const cloud = new THREE.Group();
+            const mat = getMaterial(COLORS.white);
+            const chunks = 5 + Math.random() * 5;
+            for(let i=0; i<chunks; i++) {
+                const m = new THREE.Mesh(boxGeometry, mat);
+                m.position.set((Math.random()-0.5)*3 * VOXEL_SIZE, (Math.random()-0.5)*2 * VOXEL_SIZE, (Math.random()-0.5)*3 * VOXEL_SIZE);
+                cloud.add(m);
+            }
+            cloud.position.set(x, y, z);
+            cloud.scale.setScalar(scale);
+            scene.add(cloud);
+        }
+        for(let i=0; i<15; i++) {
+            createCloud((Math.random()-0.5) * 400, (Math.random()-0.5) * 200, (Math.random()-0.5) * 200 - 100, 2 + Math.random());
+        }
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            controls.update();
+            catGroup.position.y = Math.sin(time * 2) * 5;
+            catGroup.rotation.x = Math.sin(time) * 0.1;
+            rArm.rotation.z = -Math.PI / 4 + Math.sin(time * 10) * 0.2;
+            if (Math.random() > 0.2) {
+                createParticle(-2.5);
+                createParticle(2.5);
+            }
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life -= 0.02;
+                p.mesh.position.y -= p.speed;
+                p.mesh.rotation.x += 0.1;
+                p.mesh.rotation.y += 0.1;
+                p.mesh.scale.setScalar(p.life);
+                p.mesh.material.opacity = p.life;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    particles.splice(i, 1);
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    <\/script>
+</body>
+</html>
+  </script>
+
+  <!-- 內嵌範例 3：日式庭園五重塔 -->
+  <script type="text/plain" id="example-html-3">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Japanese Garden</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    <\/script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const WORLD_SIZE = 80;
+        const PALETTE = {
+            PAGODA_RED: 0xB83228, PAGODA_WHITE: 0xEEEEEE, ROOF_DARK: 0x222222,
+            GOLD: 0xFFD700, GRASS_LIGHT: 0x6A8F36, GRASS_DARK: 0x4A6B23,
+            TREE_DARK: 0x1E3F20, BUSH_LIME: 0x8FB339, WATER: 0x4FA4B8,
+            STONE: 0x999999, DIRT: 0x5C4033
+        };
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 40, 130);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(-48, 40, 48);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 10, 0);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        sunLight.position.set(-50, 100, 50);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 500;
+        sunLight.shadow.camera.left = -100;
+        sunLight.shadow.camera.right = 100;
+        sunLight.shadow.camera.top = 100;
+        sunLight.shadow.camera.bottom = -100;
+        scene.add(sunLight);
+
+        const voxels = [];
+        function addVoxel(x, y, z, color) { voxels.push({ x, y, z, color }); }
+
+        function generateTerrain() {
+            for (let x = -WORLD_SIZE / 2; x < WORLD_SIZE / 2; x++) {
+                for (let z = -WORLD_SIZE / 2; z < WORLD_SIZE / 2; z++) {
+                    let y = Math.floor(Math.sin(x * 0.05) * Math.cos(z * 0.05) * 2);
+                    const distFromPondCenter = Math.sqrt(Math.pow(x + 15, 2) + Math.pow(z + 15, 2));
+                    if (distFromPondCenter < 12) {
+                        addVoxel(x, -2, z, PALETTE.DIRT);
+                        addVoxel(x, -1, z, PALETTE.WATER);
+                    } else {
+                        const grassColor = Math.random() > 0.7 ? PALETTE.GRASS_LIGHT : PALETTE.GRASS_DARK;
+                        addVoxel(x, y, z, grassColor);
+                        addVoxel(x, y - 1, z, PALETTE.DIRT);
+                    }
+                }
+            }
+        }
+
+        function generatePath() {
+            for (let t = -30; t < 30; t += 0.5) {
+                const x = Math.floor(t);
+                const z = Math.floor(Math.sin(t * 0.2) * 15 + 10);
+                const y = Math.floor(Math.sin(x * 0.05) * Math.cos(z * 0.05) * 2) + 1;
+                addVoxel(x, y - 0.2, z, PALETTE.STONE);
+                addVoxel(x + 1, y - 0.2, z, PALETTE.STONE);
+            }
+        }
+
+        function buildPagoda(bx, bz) {
+            const floors = 5, baseWidth = 8, startY = 0;
+            for(let x = bx - 5; x <= bx + 5; x++) {
+                for(let z = bz - 5; z <= bz + 5; z++) addVoxel(x, startY + 1, z, PALETTE.STONE);
+            }
+            let currentY = startY + 2;
+            for (let f = 0; f < floors; f++) {
+                let width = Math.max(4, baseWidth - f);
+                const roofOverhang = 2, wallHeight = 3;
+                for (let y = 0; y < wallHeight; y++) {
+                    for (let x = -width/2; x <= width/2; x++) {
+                        for (let z = -width/2; z <= width/2; z++) {
+                            if (Math.abs(x) >= width/2 - 1 || Math.abs(z) >= width/2 - 1) {
+                                const isCorner = (Math.abs(x) >= width/2 - 1 && Math.abs(z) >= width/2 - 1);
+                                addVoxel(bx + x, currentY + y, bz + z, isCorner ? PALETTE.PAGODA_WHITE : PALETTE.PAGODA_RED);
+                            }
+                        }
+                    }
+                }
+                currentY += wallHeight;
+                const roofWidth = width + roofOverhang * 2;
+                for (let x = -roofWidth/2; x <= roofWidth/2; x++) {
+                    for (let z = -roofWidth/2; z <= roofWidth/2; z++) {
+                        let dist = Math.max(Math.abs(x), Math.abs(z));
+                        let slopeY = dist > width/2 ? 0 : 1;
+                        if (Math.abs(x) === Math.floor(roofWidth/2) && Math.abs(z) === Math.floor(roofWidth/2)) slopeY += 1;
+                        addVoxel(bx + x, currentY + slopeY, bz + z, PALETTE.ROOF_DARK);
+                    }
+                }
+                currentY += 1;
+            }
+            for(let y = 0; y < 8; y++) {
+                addVoxel(bx, currentY + y, bz, PALETTE.GOLD);
+                if (y === 0 || y === 2 || y === 4) {
+                    addVoxel(bx + 1, currentY + y, bz, PALETTE.GOLD);
+                    addVoxel(bx - 1, currentY + y, bz, PALETTE.GOLD);
+                    addVoxel(bx, currentY + y, bz + 1, PALETTE.GOLD);
+                    addVoxel(bx, currentY + y, bz - 1, PALETTE.GOLD);
+                }
+            }
+        }
+
+        function buildTree(tx, tz, type) {
+            const groundY = Math.floor(Math.sin(tx * 0.05) * Math.cos(tz * 0.05) * 2);
+            if (type === 'pine') {
+                const height = 8 + Math.random() * 5;
+                for(let y = 0; y < height; y++) addVoxel(tx, groundY + y, tz, PALETTE.DIRT);
+                let radius = 4;
+                for(let y = 4; y < height + 3; y+=2) {
+                    for(let lx = -radius; lx <= radius; lx++) {
+                        for(let lz = -radius; lz <= radius; lz++) {
+                            if (lx*lx + lz*lz <= radius*radius) addVoxel(tx + lx, groundY + y, tz + lz, PALETTE.TREE_DARK);
+                        }
+                    }
+                    radius = Math.max(0, radius - 1);
+                }
+            } else if (type === 'bush') {
+                const radius = 2 + Math.random();
+                for(let x = -radius; x <= radius; x++) {
+                    for(let y = 0; y <= radius; y++) {
+                        for(let z = -radius; z <= radius; z++) {
+                            if (x*x + y*y + z*z <= radius*radius) addVoxel(tx + x, groundY + y, tz + z, PALETTE.BUSH_LIME);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateNature() {
+            for(let i = 0; i < 40; i++) {
+                let x = (Math.random() - 0.5) * (WORLD_SIZE - 10);
+                let z = (Math.random() - 0.5) * (WORLD_SIZE - 10);
+                const distPagoda = Math.sqrt(Math.pow(x - 20, 2) + Math.pow(z - (-10), 2));
+                const distPond = Math.sqrt(Math.pow(x + 15, 2) + Math.pow(z + 15, 2));
+                if (distPagoda > 15 && distPond > 14) buildTree(Math.floor(x), Math.floor(z), 'pine');
+            }
+            for(let i = 0; i < 50; i++) {
+                let x = (Math.random() - 0.5) * (WORLD_SIZE - 5);
+                let z = (Math.random() - 0.5) * (WORLD_SIZE - 5);
+                const distPond = Math.sqrt(Math.pow(x + 15, 2) + Math.pow(z + 15, 2));
+                if ((Math.abs(x - 20) > 6 || Math.abs(z + 10) > 6) && distPond > 10) {
+                    buildTree(Math.floor(x), Math.floor(z), 'bush');
+                }
+            }
+        }
+
+        generateTerrain(); generatePath(); buildPagoda(20, -10); generateNature();
+
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const mesh = new THREE.InstancedMesh(geometry, material, voxels.length);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        const dummy = new THREE.Object3D();
+        const color = new THREE.Color();
+        voxels.forEach((voxel, i) => {
+            dummy.position.set(voxel.x, voxel.y, voxel.z);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(i, dummy.matrix);
+            color.setHex(voxel.color);
+            mesh.setColorAt(i, color);
+        });
+        scene.add(mesh);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    <\/script>
+</body>
+</html>
+  </script>
+
+  <!-- React 主應用程式 -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useRef, useEffect } from 'react';
+    import { createRoot } from 'react-dom/client';
+
+    // ==========================================
+    // 1. 純前端圖片像素轉 3D 體素演算引擎
+    // ==========================================
+    const applyPaletteFilter = (r, g, b, palette) => {
+      switch (palette) {
+        case 'Monochrome': {
+          const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+          return [gray, gray, gray];
+        }
+        case 'Pastel':
+          return [
+            Math.round(r * 0.65 + 90),
+            Math.round(g * 0.65 + 90),
+            Math.round(b * 0.65 + 90)
+          ];
+        case 'Vibrant': {
+          const avg = (r + g + b) / 3;
+          const boost = 1.45;
+          return [
+            Math.min(255, Math.max(0, Math.round(avg + (r - avg) * boost))),
+            Math.min(255, Math.max(0, Math.round(avg + (g - avg) * boost))),
+            Math.min(255, Math.max(0, Math.round(avg + (b - avg) * boost)))
+          ];
+        }
+        case 'Retro 8-Bit':
+          return [
+            Math.round(r / 64) * 64,
+            Math.round(g / 64) * 64,
+            Math.round(b / 64) * 64
+          ];
+        case 'Cyberpunk Neon':
+          return [
+            Math.min(255, Math.round(r * 1.1 + 40)),
+            Math.round(g * 0.55),
+            Math.min(255, Math.round(b * 1.3 + 70))
+          ];
+        case 'Earthy & Natural':
+          return [
+            Math.min(255, Math.round(r * 0.9 + 25)),
+            Math.min(255, Math.round(g * 0.85 + 15)),
+            Math.round(b * 0.6)
+          ];
+        case 'Minecraft-style': {
+          const mcColors = [
+            [114, 152, 65], [134, 96, 67], [125, 125, 125], [219, 211, 160],
+            [59, 92, 179], [181, 49, 44], [235, 235, 235], [45, 45, 45], [230, 180, 50]
+          ];
+          let best = mcColors[0], minD = Infinity;
+          for (const c of mcColors) {
+            const d = (r - c[0]) ** 2 + (g - c[1]) ** 2 + (b - c[2]) ** 2;
+            if (d < minD) { minD = d; best = c; }
+          }
+          return best;
+        }
+        default:
+          return [r, g, b];
+      }
+    };
+
+    const buildStaticVoxelHtml = async (imageSrc, colorPalette = 'Default') => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => {
+          const gridSize = 42;
+          const canvas = document.createElement('canvas');
+          const ratio = img.width / img.height;
+          const w = ratio >= 1 ? gridSize : Math.max(12, Math.round(gridSize * ratio));
+          const h = ratio >= 1 ? Math.max(12, Math.round(gridSize / ratio)) : gridSize;
+          canvas.width = w;
+          canvas.height = h;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const data = ctx.getImageData(0, 0, w, h).data;
+
+          const corners = [
+            0,
+            (w - 1) * 4,
+            ((h - 1) * w) * 4,
+            ((h - 1) * w + (w - 1)) * 4
+          ];
+          const bgR = corners.reduce((acc, idx) => acc + data[idx], 0) / 4;
+          const bgG = corners.reduce((acc, idx) => acc + data[idx + 1], 0) / 4;
+          const bgB = corners.reduce((acc, idx) => acc + data[idx + 2], 0) / 4;
+
+          const voxelList = [];
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const i = (y * w + x) * 4;
+              const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+              if (a < 100) continue;
+
+              const colorDistFromBg = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
+              if (colorDistFromBg < 28) continue;
+
+              const [fr, fg, fb] = applyPaletteFilter(r, g, b, colorPalette);
+              const hex = (fr << 16) | (fg << 8) | fb;
+              const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+              const depthLayers = Math.max(1, Math.round(brightness * 5) + 1);
+
+              const vx = x - w / 2;
+              const vy = (h / 2) - y;
+              for (let z = 0; z < depthLayers; z++) {
+                voxelList.push([vx, vy, z - depthLayers / 2, hex]);
+              }
+            }
+          }
+
+          if (voxelList.length === 0) {
+            for (let y = 0; y < h; y++) {
+              for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const [fr, fg, fb] = applyPaletteFilter(data[i], data[i + 1], data[i + 2], colorPalette);
+                const hex = (fr << 16) | (fg << 8) | fb;
+                voxelList.push([x - w / 2, (h / 2) - y, 0, hex]);
+              }
+            }
+          }
+
+          const bgHex = colorPalette === 'Cyberpunk Neon' ? '#0d0821' : '#f4f4f6';
+
+          const htmlOutput = `<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Voxel Art Scene</title>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: ${bgHex}; }
+    canvas { display: block; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  <\/script>
+</head>
+<body>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const VOXEL_DATA = ${JSON.stringify(voxelList)};
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('${bgHex}');
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 12, 58);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.2;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+    dirLight.position.set(30, 50, 40);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const backLight = new THREE.DirectionalLight(0xaaccff, 0.45);
+    backLight.position.set(-30, -20, -40);
+    scene.add(backLight);
+
+    const baseGeo = new THREE.CylinderGeometry(24, 26, 2, 32);
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
+    const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+    baseMesh.position.y = -${Math.round(h / 2 + 2)};
+    baseMesh.receiveShadow = true;
+    scene.add(baseMesh);
+
+    const geometry = new THREE.BoxGeometry(0.96, 0.96, 0.96);
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0.08 });
+    const instancedMesh = new THREE.InstancedMesh(geometry, material, VOXEL_DATA.length);
+    instancedMesh.castShadow = true;
+    instancedMesh.receiveShadow = true;
+
+    const dummy = new THREE.Object3D();
+    const color = new THREE.Color();
+    VOXEL_DATA.forEach((v, i) => {
+      dummy.position.set(v[0], v[1], v[2]);
+      dummy.updateMatrix();
+      instancedMesh.setMatrixAt(i, dummy.matrix);
+      color.setHex(v[3]);
+      instancedMesh.setColorAt(i, color);
+    });
+    scene.add(instancedMesh);
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+      instancedMesh.position.y = Math.sin(t * 1.5) * 0.6;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  <\/script>
+</body>
+</html>`;
+          resolve(htmlOutput);
+        };
+        img.onerror = () => reject(new Error("圖片讀取失敗"));
+        img.src = imageSrc;
+      });
+    };
+
+    // ==========================================
+    // 2. 常數與介面文案
+    // ==========================================
+    const VOXEL_COLOR_PALETTES = [
+      "Default", "Monochrome", "Pastel", "Vibrant",
+      "Minecraft-style", "Cyberpunk Neon", "Retro 8-Bit", "Earthy & Natural"
+    ];
+    const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+    const PALETTE_LABELS = {
+      zh: {
+        "Default": "預設（依原圖配色）",
+        "Monochrome": "單色黑白 (Monochrome)",
+        "Pastel": "柔和粉彩 (Pastel)",
+        "Vibrant": "鮮豔飽和 (Vibrant)",
+        "Minecraft-style": "Minecraft 風格 (Minecraft-style)",
+        "Cyberpunk Neon": "賽博龐克霓虹 (Cyberpunk Neon)",
+        "Retro 8-Bit": "復古 8-Bit (Retro 8-Bit)",
+        "Earthy & Natural": "自然大地 (Earthy & Natural)"
+      },
+      en: {
+        "Default": "Default",
+        "Monochrome": "Monochrome",
+        "Pastel": "Pastel",
+        "Vibrant": "Vibrant",
+        "Minecraft-style": "Minecraft-style",
+        "Cyberpunk Neon": "Cyberpunk Neon",
+        "Retro 8-Bit": "Retro 8-Bit",
+        "Earthy & Natural": "Earthy & Natural"
+      }
+    };
+
+    const UI_TEXT = {
+      zh: {
+        title: "圖片轉 3D 體素藝術",
+        subtitle: "純前端本機運算，將任何圖片即時轉化為互動 3D 體素場景。",
+        loading: "載入中...",
+        viewExampleTitle: "點擊檢視範例場景",
+        loadExampleAria: (idx) => `載入範例 ${idx}`,
+        generateNewAria: "上傳圖片製作體素",
+        viewGeneratedTitle: "檢視已上傳的圖片",
+        generateNewTitle: "上傳新圖片",
+        editing: "編輯中",
+        close: "關閉",
+        uploadBtn: "上傳圖片",
+        uploadImage: "選擇或拖放圖片",
+        dragDropHint: "拖放圖片至此，或點擊選擇圖片（支援 PNG / JPG / WEBP / GIF）",
+        errorPrefix: "錯誤：",
+        invalidFileType: "檔案格式不支援，請上傳 PNG、JPEG、WEBP 或 GIF 圖片。",
+        failedReadFile: "讀取檔案失敗",
+        unexpectedError: "發生未預期的錯誤。",
+        generatingVoxelStatus: "正在將圖片像素轉換為 3D 體素場景...",
+        emptyViewerPrompt: "請點選上方範例，或點擊「上傳圖片」創作專屬 3D 體素作品！",
+        voxelColorPalette: "體素色彩風格 (Voxel Color Palette)",
+        viewScene: "檢視 3D 場景",
+        viewImage: "檢視原始圖片",
+        downloadImage: "下載圖片",
+        downloadHtml: "下載 3D HTML",
+        regenerateVoxels: "套用配色並重新生成",
+        generateVoxels: "生成 3D 體素"
+      },
+      en: {
+        title: "IMAGE TO VOXEL ART",
+        subtitle: "Pure client-side voxel engine. Convert any image into an interactive 3D scene.",
+        loading: "Loading...",
+        viewExampleTitle: "Click to view example scene",
+        loadExampleAria: (idx) => `Load Example ${idx}`,
+        generateNewAria: "Upload image to voxelize",
+        viewGeneratedTitle: "View Uploaded Image",
+        generateNewTitle: "Upload New Image",
+        editing: "Editing",
+        close: "Close",
+        uploadBtn: "Upload",
+        uploadImage: "Select or Drop Image",
+        dragDropHint: "Drag and drop or click to upload image (PNG / JPG / WEBP / GIF)",
+        errorPrefix: "ERROR:",
+        invalidFileType: "Invalid file type. Please upload PNG, JPEG, WEBP, or GIF.",
+        failedReadFile: "Failed to read file",
+        unexpectedError: "An unexpected error occurred.",
+        generatingVoxelStatus: "Converting image pixels into 3D voxel scene...",
+        emptyViewerPrompt: "Select an example above, or click Upload to create your own!",
+        voxelColorPalette: "Voxel Color Palette",
+        viewScene: "View 3D Scene",
+        viewImage: "View Image",
+        downloadImage: "Download Image",
+        downloadHtml: "Download 3D HTML",
+        regenerateVoxels: "Apply Palette & Rebuild",
+        generateVoxels: "Generate 3D Voxels"
+      }
+    };
+
+    const EXAMPLES = [
+      {
+        img: 'https://www.gstatic.com/aistudio/starter-apps/image_to_voxel/example1.png',
+        scriptId: 'example-html-1',
+        fallbackLabel: '櫻花浮空島'
+      },
+      {
+        img: 'https://www.gstatic.com/aistudio/starter-apps/image_to_voxel/example2.png',
+        scriptId: 'example-html-2',
+        fallbackLabel: '噴射背包貓'
+      },
+      {
+        img: 'https://www.gstatic.com/aistudio/starter-apps/image_to_voxel/example3.png',
+        scriptId: 'example-html-3',
+        fallbackLabel: '日式庭園塔'
+      },
+    ];
+
+    // ==========================================
+    // 3. 主應用程式元件
+    // ==========================================
+    const App = () => {
+      const [lang, setLang] = useState('zh');
+      const t = UI_TEXT[lang];
+
+      const [imageData, setImageData] = useState(null);
+      const [voxelCode, setVoxelCode] = useState(null);
+      const [userContent, setUserContent] = useState(null);
+
+      const [selectedTile, setSelectedTile] = useState(null);
+      const [showGenerator, setShowGenerator] = useState(false);
+
+      const [status, setStatus] = useState('idle');
+      const [errorMsg, setErrorMsg] = useState('');
+      const [colorPalette, setColorPalette] = useState('Default');
+      const [viewMode, setViewMode] = useState('image');
+      
+      const [loadedThumbnails, setLoadedThumbnails] = useState({});
+      const [thumbnailErrors, setThumbnailErrors] = useState({});
+
+      const [isDragging, setIsDragging] = useState(false);
+      const [isViewerVisible, setIsViewerVisible] = useState(true);
+      const fileInputRef = useRef(null);
+
+      useEffect(() => {
+        EXAMPLES.forEach((ex) => {
+          const img = new Image();
+          img.onload = () => setLoadedThumbnails(prev => ({ ...prev, [ex.img]: ex.img }));
+          img.onerror = () => setThumbnailErrors(prev => ({ ...prev, [ex.img]: true }));
+          img.src = ex.img;
+        });
+      }, []);
+
+      const handleError = (err) => {
+        setStatus('error');
+        setErrorMsg(String(err?.message || err || t.unexpectedError));
+        console.error(err);
+      };
+
+      const runVoxelize = async (imgSrc, paletteToUse, isUser = true) => {
+        setStatus('generating_voxels');
+        setErrorMsg('');
+        setIsViewerVisible(true);
+        try {
+          const code = await buildStaticVoxelHtml(imgSrc, paletteToUse);
+          setVoxelCode(code);
+          if (isUser) {
+            setUserContent({ image: imgSrc, voxel: code });
+          }
+          setViewMode('voxel');
+          setStatus('idle');
+        } catch (err) {
+          handleError(err);
+        }
+      };
+
+      const processFile = (file) => {
+        if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+          handleError(new Error(t.invalidFileType));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const result = e.target?.result;
+          setImageData(result);
+          setSelectedTile('user');
+          setShowGenerator(false);
+          setIsViewerVisible(true);
+          await runVoxelize(result, colorPalette, true);
+        };
+        reader.onerror = () => handleError(new Error(t.failedReadFile));
+        reader.readAsDataURL(file);
+      };
+
+      const handleFileUpload = (event) => {
+        const file = event.target.files?.[0];
+        if (file) processFile(file);
+      };
+
+      const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+      const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) processFile(file);
+      };
+
+      const handleExampleClick = (example, index) => {
+        if (status !== 'idle' && status !== 'error') return;
+        setSelectedTile(index);
+        setShowGenerator(false);
+        setErrorMsg('');
+        setIsViewerVisible(true);
+
+        const scriptEl = document.getElementById(example.scriptId);
+        const rawHtml = scriptEl ? scriptEl.textContent : "<html><body>Example not found.</body></html>";
+        setImageData(loadedThumbnails[example.img] || example.img);
+        setVoxelCode(rawHtml);
+        setViewMode('voxel');
+        setStatus('idle');
+      };
+
+      const handleUserTileClick = () => {
+        if (status !== 'idle' && status !== 'error') return;
+        if (selectedTile === 'user') {
+          const willShow = !showGenerator;
+          setShowGenerator(willShow);
+          if (willShow) {
+            setIsViewerVisible(false);
+          } else {
+            setIsViewerVisible(true);
+            if (!userContent) setSelectedTile(null);
+          }
+        } else {
+          setSelectedTile('user');
+          setShowGenerator(true);
+          setIsViewerVisible(false);
+          if (userContent) {
+            setImageData(userContent.image);
+            setVoxelCode(userContent.voxel);
+            setViewMode(userContent.voxel ? 'voxel' : 'image');
+          } else {
+            setImageData(null);
+            setVoxelCode(null);
+            setViewMode('image');
+          }
+        }
+      };
+
+      const handleDownload = () => {
+        if (viewMode === 'image' && imageData) {
+          const a = document.createElement('a');
+          a.href = imageData;
+          const ext = imageData.includes('image/jpeg') ? 'jpg' : 'png';
+          a.download = `voxelize-image-${Date.now()}.${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else if (viewMode === 'voxel' && voxelCode) {
+          const blob = new Blob([voxelCode], { type: 'text/html;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `voxel-scene-${Date.now()}.html`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+      };
+
+      const isLoading = status !== 'idle' && status !== 'error';
+
+      return (
+        <div className="min-h-screen flex flex-col items-center py-10 px-4 sm:px-6 lg:px-8 font-sans bg-white">
+          <div className="w-full max-w-2xl space-y-6">
+            
+            {/* Header */}
+            <div className="relative text-center border-b-2 border-black pb-6">
+              <div className="flex justify-end mb-3 sm:mb-0 sm:absolute sm:right-0 sm:top-0">
+                <button
+                  type="button"
+                  onClick={() => setLang(prev => prev === 'zh' ? 'en' : 'zh')}
+                  className="px-3 py-1.5 border-2 border-black bg-white hover:bg-gray-100 text-xs font-bold uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer"
+                >
+                  {lang === 'zh' ? 'EN / 中文' : '中文 / EN'}
+                </button>
+              </div>
+              <h1 className="text-4xl sm:text-5xl font-black leading-[0.9] tracking-tight">{t.title}</h1>
+              <p className="mt-2 text-base sm:text-lg text-gray-600 font-semibold">{t.subtitle}</p>
+            </div>
+
+            {/* Example Tiles & User Tile */}
+            <div className="grid grid-cols-4 gap-4 w-full">
+              {EXAMPLES.map((ex, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleExampleClick(ex, idx)}
+                  disabled={isLoading}
+                  aria-label={t.loadExampleAria(idx + 1)}
+                  className={`aspect-square relative overflow-hidden group focus:outline-none disabled:opacity-50 cursor-pointer bg-gray-100 transition-all duration-200
+                    border-2 border-black
+                    active:translate-y-0 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:scale-100
+                    ${selectedTile === idx 
+                      ? 'scale-[1.02] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] -translate-y-1' 
+                      : 'hover:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]'}
+                  `}
+                  title={t.viewExampleTitle}
+                >
+                  {loadedThumbnails[ex.img] ? (
+                    <img src={loadedThumbnails[ex.img]} alt={`Example ${idx + 1}`} className="w-full h-full object-cover" />
+                  ) : thumbnailErrors[ex.img] ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 p-2 text-center">
+                      <span className="text-lg mb-1">🧊</span>
+                      <span className="text-xs font-black">{ex.fallbackLabel}</span>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-500 text-xs uppercase font-bold animate-pulse">
+                      {t.loading}
+                    </div>
+                  )}
+                  {selectedTile !== idx && <div className="absolute inset-0 bg-white bg-opacity-30 group-hover:bg-opacity-0 transition-all duration-200"></div>}
+                </button>
+              ))}
+              
+              {/* User Upload Tile */}
+              <button
+                type="button"
+                onClick={handleUserTileClick}
+                disabled={isLoading}
+                aria-label={t.generateNewAria}
+                className={`aspect-square flex flex-col items-center justify-center transition-all duration-200 focus:outline-none disabled:opacity-50 group overflow-hidden relative border-2 border-black cursor-pointer
+                  active:translate-y-0 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:scale-100
+                  ${selectedTile === 'user' ? 'scale-[1.02] -translate-y-1' : 'hover:border-gray-600 hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]'}
+                  ${!userContent && !showGenerator ? 'bg-white text-black hover:bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}
+                  ${showGenerator && selectedTile === 'user' 
+                    ? 'bg-black text-white shadow-[4px_4px_0px_0px_#888]' 
+                    : (selectedTile === 'user' ? 'shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : 'shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]')}
+                `}
+                title={userContent ? t.viewGeneratedTitle : t.generateNewTitle}
+              >
+                {userContent ? (
+                  <>
+                    <img src={userContent.image} alt="My Upload" className="w-full h-full object-cover" />
+                    {selectedTile !== 'user' && (
+                      <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center group-hover:bg-opacity-50 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-12 h-12 text-white drop-shadow-md">
+                          <path strokeLinecap="square" strokeLinejoin="miter" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                      </div>
+                    )}
+                    {selectedTile === 'user' && showGenerator && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                        <span className="text-white font-bold uppercase text-sm">{t.editing}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-10 h-10 transition-transform duration-300 ${showGenerator ? 'rotate-45' : 'group-hover:scale-110'}`}>
+                      <path strokeLinecap="square" strokeLinejoin="miter" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    <span className="text-xs font-bold uppercase mt-2">{showGenerator ? t.close : t.uploadBtn}</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Upload Section */}
+            {showGenerator && (
+              <div className="border-2 border-black p-6 bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative z-10">
+                <label className="block text-sm font-bold mb-2 uppercase">{t.uploadImage}</label>
+                <div 
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`w-full h-64 border-2 border-dashed border-black flex flex-col items-center justify-center cursor-pointer transition-colors ${isDragging ? 'bg-gray-200' : 'bg-white hover:bg-gray-50'}`}
+                >
+                  <input
+                    type="file"
+                    accept={ALLOWED_MIME_TYPES.join(',')}
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <span className="text-3xl mb-2">🖼️</span>
+                  <p className="font-bold text-sm text-gray-700 px-4 text-center">{t.dragDropHint}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {errorMsg && (
+              <div className="p-4 border-2 border-red-500 bg-red-50 text-red-700 text-sm font-bold" role="alert">
+                {t.errorPrefix} {errorMsg}
+              </div>
+            )}
+
+            {/* Viewer & Buttons Wrapper */}
+            <div className="space-y-2">
+              {isViewerVisible && (
+                <div className="w-full aspect-square border-2 border-black relative bg-gray-50 flex items-center justify-center overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                  {isLoading && (
+                    <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8">
+                      <div className="text-xl font-bold tracking-tight animate-pulse">
+                        {t.generatingVoxelStatus}
+                      </div>
+                    </div>
+                  )}
+
+                  {!imageData && !isLoading && status !== 'error' && (
+                    <div className="text-gray-400 text-center px-6 pointer-events-none">
+                      <p className="text-lg font-bold">{t.emptyViewerPrompt}</p>
+                    </div>
+                  )}
+
+                  {imageData && viewMode === 'image' && (
+                    <img src={imageData} alt="Uploaded" className="w-full h-full object-contain" />
+                  )}
+
+                  {voxelCode && viewMode === 'voxel' && (
+                    <iframe
+                      title="Voxel Scene"
+                      srcDoc={voxelCode}
+                      className="w-full h-full border-0"
+                      sandbox="allow-scripts allow-same-origin allow-popups"
+                    />
+                  )}
+                </div>
+              )}
+
+              {isViewerVisible && (
+                <div className="space-y-4 pt-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-2 border-black bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <label htmlFor="voxel-color-palette" className="text-sm font-bold uppercase tracking-wide">
+                      {t.voxelColorPalette}
+                    </label>
+                    <select
+                      id="voxel-color-palette"
+                      value={colorPalette}
+                      onChange={(e) => setColorPalette(e.target.value)}
+                      disabled={isLoading}
+                      className="w-full sm:w-64 px-3 border-2 border-black focus:outline-none rounded-none bg-white h-11 font-bold text-sm cursor-pointer disabled:opacity-50"
+                    >
+                      {VOXEL_COLOR_PALETTES.map((palette) => (
+                        <option key={palette} value={palette}>
+                          {PALETTE_LABELS[lang][palette] || palette}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-wrap gap-4">
+                    {imageData && voxelCode && (
+                      <button
+                        type="button"
+                        onClick={() => setViewMode(viewMode === 'image' ? 'voxel' : 'image')}
+                        disabled={isLoading}
+                        className="flex-1 min-w-[140px] py-4 border-2 border-black bg-white font-bold uppercase transition-all duration-200 disabled:opacity-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-50 hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                      >
+                        {viewMode === 'image' ? t.viewScene : t.viewImage}
+                      </button>
+                    )}
+
+                    {((viewMode === 'image' && imageData) || (viewMode === 'voxel' && voxelCode)) && (
+                      <button
+                        type="button"
+                        onClick={handleDownload}
+                        disabled={isLoading}
+                        className="flex-1 min-w-[140px] py-4 border-2 border-black bg-white font-bold uppercase transition-all duration-200 disabled:opacity-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-50 hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                      >
+                        {viewMode === 'image' ? t.downloadImage : t.downloadHtml}
+                      </button>
+                    )}
+                    
+                    {imageData && (
+                      <button
+                        type="button"
+                        onClick={() => runVoxelize(imageData, colorPalette, selectedTile === 'user')}
+                        disabled={isLoading}
+                        className="flex-1 min-w-[160px] py-4 bg-black text-white border-2 border-black font-bold uppercase disabled:opacity-50 transition-all duration-200 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)] hover:bg-gray-900 hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.5)] active:translate-y-0 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)] cursor-pointer"
+                      >
+                        {voxelCode ? t.regenerateVoxels : t.generateVoxels}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
